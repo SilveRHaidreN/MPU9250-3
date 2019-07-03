@@ -32,81 +32,85 @@
 #include <unistd.h>
 #include <sys/ioctl.h>
 #include <memory.h>
+#include <math.h>
 #include <errno.h>
 #include <linux/i2c-dev.h>
 #include "MPU9250.h"
 
 int initIMU()
 {
+  // reset the MPU9250
+  setRegister(MPU9250_ADDRESS, PWR_MGMT_1,PWR_RESET);
+  // wait for MPU-9250 to come back up
+  usleep(100);
   // select clock source to gyro
-  if(setRegister(PWR_MGMNT_1,CLOCK_SEL_PLL) < 0){
-	  printf("ERROR");
+  if(setRegister(MPU9250_ADDRESS, PWR_MGMT_1,CLOCK_SEL_PLL) < 0){
     return -1;
   }
   // enable I2C master mode
-  if(setRegister(USER_CTRL,I2C_MST_EN) < 0){
-	  printf("ERROR");
+  if(setRegister(MPU9250_ADDRESS, USER_CTRL,I2C_MST_EN) < 0){
     return -2;
   }
   // set the I2C bus speed to 400 kHz
-  if(setRegister(I2C_MST_CTRL,I2C_MST_CLK) < 0){
-	  printf("ERROR");
+  if(setRegister(MPU9250_ADDRESS, I2C_MST_CTRL,I2C_MST_CLK) < 0){
     return -3;
   }
   // set AK8963 to Power Down
-  setRegistersAK8963(AK8963_CNTL1,AK8963_PWR_DOWN);
+  if (setRegistersAK8963(AK8963_CNTL1,AK8963_PWR_DOWN) < 0){
+    return -30;
+  };
   // reset the MPU9250
-  setRegister(PWR_MGMNT_1,PWR_RESET);
+  setRegister(MPU9250_ADDRESS, PWR_MGMT_1,PWR_RESET);
   // wait for MPU-9250 to come back up
-  usleep(10);
+  usleep(100);
   // reset the AK8963
+  printf("\n Go to reset\n", -31);
   setRegistersAK8963(AK8963_CNTL2,AK8963_RESET);
   // select clock source to gyro
-  if(setRegister(PWR_MGMNT_1,CLOCK_SEL_PLL) < 0){
+  if(setRegister(MPU9250_ADDRESS, PWR_MGMT_1,CLOCK_SEL_PLL) < 0){
     return -4;
   }
   // enable accelerometer and gyro
-  if(setRegister(PWR_MGMNT_2,SEN_ENABLE) < 0){
+  if(setRegister(MPU9250_ADDRESS, PWR_MGMT_2,SEN_ENABLE) < 0){
     return -6;
   }
   // setting accel range to 16G as default
-  if(setRegister(ACCEL_CONFIG,ACCEL_FS_SEL_16G) < 0){
+  if(setRegister(MPU9250_ADDRESS, ACCEL_CONFIG,ACCEL_FS_SEL_16G) < 0){
     return -7;
   }
   _accelScale = G * 16.0f/32767.5f; // setting the accel scale to 16G
   _accelRange = ACCEL_RANGE_16G;
   // setting the gyro range to 2000DPS as default
-  if(setRegister(GYRO_CONFIG,GYRO_FS_SEL_2000DPS) < 0){
+  if(setRegister(MPU9250_ADDRESS, GYRO_CONFIG,GYRO_FS_SEL_2000DPS) < 0){
     return -8;
   }
   _gyroScale = 2000.0f/32767.5f * _d2r; // setting the gyro scale to 2000DPS
   _gyroRange = GYRO_RANGE_2000DPS;
   // setting bandwidth to 184Hz as default
-  if(setRegister(ACCEL_CONFIG2,ACCEL_DLPF_184) < 0){ 
+  if(setRegister(MPU9250_ADDRESS, ACCEL_CONFIG2,ACCEL_DLPF_184) < 0){ 
     return -9;
   } 
-  if(setRegister(CONFIG,GYRO_DLPF_184) < 0){ // setting gyro bandwidth to 184Hz
+  if(setRegister(MPU9250_ADDRESS, CONFIG,GYRO_DLPF_184) < 0){ // setting gyro bandwidth to 184Hz
     return -10;
   }
   _bandwidth = DLPF_BANDWIDTH_184HZ;
   // setting the sample rate divider to 0 as default
-  if(setRegister(SMPDIV,0x00) < 0){ 
+  if(setRegister(MPU9250_ADDRESS, SMPDIV,0x00) < 0){ 
     return -11;
   } 
   _srd = 0;
   // enable I2C master mode
-  if(setRegister(USER_CTRL,I2C_MST_EN) < 0){
+  if(setRegister(MPU9250_ADDRESS, USER_CTRL,I2C_MST_EN) < 0){
   	return -12;
   }
   // set the I2C bus speed to 400 kHz
-  if(setRegister(I2C_MST_CTRL,I2C_MST_CLK) < 0){
+  if(setRegister(MPU9250_ADDRESS, I2C_MST_CTRL,I2C_MST_CLK) < 0){
     return -13;
   }
   // check AK8963 WHO AM I register, expected value is 0x48 (decimal 72)
   if(whoAmIAK8963() != 72 ){
     return -14;
   }
-  printf("STEEP \n");
   /* get the magnetometer calibration */
   // set AK8963 to Power Down
   if(setRegistersAK8963(AK8963_CNTL1,AK8963_PWR_DOWN) < 0){
@@ -127,23 +131,32 @@ int initIMU()
   if(setRegistersAK8963(AK8963_CNTL1,AK8963_PWR_DOWN) < 0){
     return -17;
   }
-  usleep(100); // long wait between AK8963 mode changes  
+  usleep(100); // long wait between AK8963 mode changes
   // set AK8963 to 16 bit resolution, 100 Hz update rate
   if(setRegistersAK8963(AK8963_CNTL1,AK8963_CNT_MEAS2) < 0){
     return -18;
   }
   usleep(100); // long wait between AK8963 mode changes
   // select clock source to gyro
-  if(setRegister(PWR_MGMNT_1,CLOCK_SEL_PLL) < 0){
+  if(setRegister(MPU9250_ADDRESS, PWR_MGMT_1,CLOCK_SEL_PLL) < 0){
     return -19;
-  }       
+  }
   // instruct the MPU9250 to get 7 bytes of data from the AK8963 at the sample rate
   getRegistersAK8963(AK8963_HXL,7,_buffer);
   // estimate gyro bias
   if (calibrateGyro() < 0) {
     return -20;
   }
+  // estimate gyro bias
+  if (calibrateMag() < 0) {
+    return -21;
+  }
+  // estimate gyro bias
+  if (calibrateAccel() < 0) {
+    return -22;
+  }
   // successful init, return 1
+  printf("successful init. \n");
 
   return 1;
 }
@@ -153,7 +166,7 @@ int setAccelRange(char range) {
   switch(range) {
     case ACCEL_RANGE_2G: {
       // setting the accel range to 2G
-      if(setRegister(ACCEL_CONFIG,ACCEL_FS_SEL_2G) < 0){
+      if(setRegister(MPU9250_ADDRESS, ACCEL_CONFIG,ACCEL_FS_SEL_2G) < 0){
         return -1;
       }
       _accelScale = G * 2.0f/32767.5f; // setting the accel scale to 2G
@@ -161,7 +174,7 @@ int setAccelRange(char range) {
     }
     case ACCEL_RANGE_4G: {
       // setting the accel range to 4G
-      if(setRegister(ACCEL_CONFIG,ACCEL_FS_SEL_4G) < 0){
+      if(setRegister(MPU9250_ADDRESS, ACCEL_CONFIG,ACCEL_FS_SEL_4G) < 0){
         return -1;
       }
       _accelScale = G * 4.0f/32767.5f; // setting the accel scale to 4G
@@ -169,7 +182,7 @@ int setAccelRange(char range) {
     }
     case ACCEL_RANGE_8G: {
       // setting the accel range to 8G
-      if(setRegister(ACCEL_CONFIG,ACCEL_FS_SEL_8G) < 0){
+      if(setRegister(MPU9250_ADDRESS, ACCEL_CONFIG,ACCEL_FS_SEL_8G) < 0){
         return -1;
       }
       _accelScale = G * 8.0f/32767.5f; // setting the accel scale to 8G
@@ -177,7 +190,7 @@ int setAccelRange(char range) {
     }
     case ACCEL_RANGE_16G: {
       // setting the accel range to 16G
-      if(setRegister(ACCEL_CONFIG,ACCEL_FS_SEL_16G) < 0){
+      if(setRegister(MPU9250_ADDRESS, ACCEL_CONFIG,ACCEL_FS_SEL_16G) < 0){
         return -1;
       }
       _accelScale = G * 16.0f/32767.5f; // setting the accel scale to 16G
@@ -194,7 +207,7 @@ int setGyroRange(char range)
   switch(range) {
     case GYRO_RANGE_250DPS: {
       // setting the gyro range to 250DPS
-      if(setRegister(GYRO_CONFIG,GYRO_FS_SEL_250DPS) < 0){
+      if(setRegister(MPU9250_ADDRESS, GYRO_CONFIG,GYRO_FS_SEL_250DPS) < 0){
         return -1;
       }
       _gyroScale = 250.0f/32767.5f * _d2r; // setting the gyro scale to 250DPS
@@ -202,7 +215,7 @@ int setGyroRange(char range)
     }
     case GYRO_RANGE_500DPS: {
       // setting the gyro range to 500DPS
-      if(setRegister(GYRO_CONFIG,GYRO_FS_SEL_500DPS) < 0){
+      if(setRegister(MPU9250_ADDRESS, GYRO_CONFIG,GYRO_FS_SEL_500DPS) < 0){
         return -1;
       }
       _gyroScale = 500.0f/32767.5f * _d2r; // setting the gyro scale to 500DPS
@@ -210,7 +223,7 @@ int setGyroRange(char range)
     }
     case GYRO_RANGE_1000DPS: {
       // setting the gyro range to 1000DPS
-      if(setRegister(GYRO_CONFIG,GYRO_FS_SEL_1000DPS) < 0){
+      if(setRegister(MPU9250_ADDRESS, GYRO_CONFIG,GYRO_FS_SEL_1000DPS) < 0){
         return -1;
       }
       _gyroScale = 1000.0f/32767.5f * _d2r; // setting the gyro scale to 1000DPS
@@ -218,7 +231,7 @@ int setGyroRange(char range)
     }
     case GYRO_RANGE_2000DPS: {
       // setting the gyro range to 2000DPS
-      if(setRegister(GYRO_CONFIG,GYRO_FS_SEL_2000DPS) < 0){
+      if(setRegister(MPU9250_ADDRESS, GYRO_CONFIG,GYRO_FS_SEL_2000DPS) < 0){
         return -1;
       }
       _gyroScale = 2000.0f/32767.5f * _d2r; // setting the gyro scale to 2000DPS
@@ -234,55 +247,55 @@ int setDlpfBandwidth(char bandwidth)
 {
   switch(bandwidth) {
     case DLPF_BANDWIDTH_184HZ: {
-      if(setRegister(ACCEL_CONFIG2,ACCEL_DLPF_184) < 0){ // setting accel bandwidth to 184Hz
+      if(setRegister(MPU9250_ADDRESS, ACCEL_CONFIG2,ACCEL_DLPF_184) < 0){ // setting accel bandwidth to 184Hz
         return -1;
-      } 
-      if(setRegister(CONFIG,GYRO_DLPF_184) < 0){ // setting gyro bandwidth to 184Hz
+      }
+      if(setRegister(MPU9250_ADDRESS, CONFIG,GYRO_DLPF_184) < 0){ // setting gyro bandwidth to 184Hz
         return -2;
       }
       break;
     }
     case DLPF_BANDWIDTH_92HZ: {
-      if(setRegister(ACCEL_CONFIG2,ACCEL_DLPF_92) < 0){ // setting accel bandwidth to 92Hz
+      if(setRegister(MPU9250_ADDRESS, ACCEL_CONFIG2,ACCEL_DLPF_92) < 0){ // setting accel bandwidth to 92Hz
         return -1;
       } 
-      if(setRegister(CONFIG,GYRO_DLPF_92) < 0){ // setting gyro bandwidth to 92Hz
+      if(setRegister(MPU9250_ADDRESS, CONFIG,GYRO_DLPF_92) < 0){ // setting gyro bandwidth to 92Hz
         return -2;
       }
       break;
     }
     case DLPF_BANDWIDTH_41HZ: {
-      if(setRegister(ACCEL_CONFIG2,ACCEL_DLPF_41) < 0){ // setting accel bandwidth to 41Hz
+      if(setRegister(MPU9250_ADDRESS, ACCEL_CONFIG2,ACCEL_DLPF_41) < 0){ // setting accel bandwidth to 41Hz
         return -1;
       } 
-      if(setRegister(CONFIG,GYRO_DLPF_41) < 0){ // setting gyro bandwidth to 41Hz
+      if(setRegister(MPU9250_ADDRESS, CONFIG,GYRO_DLPF_41) < 0){ // setting gyro bandwidth to 41Hz
         return -2;
       }
       break;
     }
     case DLPF_BANDWIDTH_20HZ: {
-      if(setRegister(ACCEL_CONFIG2,ACCEL_DLPF_20) < 0){ // setting accel bandwidth to 20Hz
+      if(setRegister(MPU9250_ADDRESS, ACCEL_CONFIG2,ACCEL_DLPF_20) < 0){ // setting accel bandwidth to 20Hz
         return -1;
-      } 
-      if(setRegister(CONFIG,GYRO_DLPF_20) < 0){ // setting gyro bandwidth to 20Hz
+      }
+      if(setRegister(MPU9250_ADDRESS, CONFIG,GYRO_DLPF_20) < 0){ // setting gyro bandwidth to 20Hz
         return -2;
       }
       break;
     }
     case DLPF_BANDWIDTH_10HZ: {
-      if(setRegister(ACCEL_CONFIG2,ACCEL_DLPF_10) < 0){ // setting accel bandwidth to 10Hz
+      if(setRegister(MPU9250_ADDRESS, ACCEL_CONFIG2,ACCEL_DLPF_10) < 0){ // setting accel bandwidth to 10Hz
         return -1;
       } 
-      if(setRegister(CONFIG,GYRO_DLPF_10) < 0){ // setting gyro bandwidth to 10Hz
+      if(setRegister(MPU9250_ADDRESS, CONFIG,GYRO_DLPF_10) < 0){ // setting gyro bandwidth to 10Hz
         return -2;
       }
       break;
     }
     case DLPF_BANDWIDTH_5HZ: {
-      if(setRegister(ACCEL_CONFIG2,ACCEL_DLPF_5) < 0){ // setting accel bandwidth to 5Hz
+      if(setRegister(MPU9250_ADDRESS, ACCEL_CONFIG2,ACCEL_DLPF_5) < 0){ // setting accel bandwidth to 5Hz
         return -1;
       } 
-      if(setRegister(CONFIG,GYRO_DLPF_5) < 0){ // setting gyro bandwidth to 5Hz
+      if(setRegister(MPU9250_ADDRESS, CONFIG,GYRO_DLPF_5) < 0){ // setting gyro bandwidth to 5Hz
         return -2;
       }
       break;
@@ -295,30 +308,23 @@ int setDlpfBandwidth(char bandwidth)
 /* sets the sample rate divider to values other than default */
 int setSrd(uint8_t srd) {
   /* setting the sample rate divider to 19 to facilitate setting up magnetometer */
-  if(setRegister(SMPDIV,19) < 0){ // setting the sample rate divider
+  if(setRegister(MPU9250_ADDRESS, SMPDIV,19) < 0){ // setting the sample rate divider
+    printf("set Register Error code %d \n", -1);
     return -1;
   }
-  if(srd > 9){
-    // set AK8963 to Power Down
-    if(setRegistersAK8963(AK8963_CNTL1,AK8963_PWR_DOWN) < 0){
-      return -2;
-    }
-    usleep(100); // long wait between AK8963 mode changes  
-    // set AK8963 to 16 bit resolution, 8 Hz update rate
-    if(setRegistersAK8963(AK8963_CNTL1,AK8963_CNT_MEAS1) < 0){
-      return -3;
-    }
-    usleep(100); // long wait between AK8963 mode changes     
+  if(srd > 9){   
     // instruct the MPU9250 to get 7 bytes of data from the AK8963 at the sample rate
     getRegistersAK8963(AK8963_HXL,7,_buffer);
   } else {
     // set AK8963 to Power Down
     if(setRegistersAK8963(AK8963_CNTL1,AK8963_PWR_DOWN) < 0){
+      printf("set AK8963 to Power Down. Error code %d \n", -2);
       return -2;
     }
     usleep(100); // long wait between AK8963 mode changes  
     // set AK8963 to 16 bit resolution, 100 Hz update rate
     if(setRegistersAK8963(AK8963_CNTL1,AK8963_CNT_MEAS2) < 0){
+      printf("set AK8963 to 16 bit resolution, 100 Hz update rate. Error code %d \n", -2);
       return -3;
     }
     usleep(100); // long wait between AK8963 mode changes     
@@ -326,7 +332,8 @@ int setSrd(uint8_t srd) {
     getRegistersAK8963(AK8963_HXL,7,_buffer);    
   } 
   /* setting the sample rate divider */
-  if(setRegister(SMPDIV,srd) < 0){ // setting the sample rate divider
+  if(setRegister(MPU9250_ADDRESS, SMPDIV,srd) < 0){ // setting the sample rate divider
+    printf("Setting the sample rate divider. Error code %d \n", -4);
     return -4;
   } 
   _srd = srd;
@@ -336,10 +343,10 @@ int setSrd(uint8_t srd) {
 /* enables the data ready interrupt */
 int enableDataReadyInterrupt() {
   /* setting the interrupt */
-  if (setRegister(INT_PIN_CFG,INT_PULSE_50US) < 0){ // setup interrupt, 50 us pulse
+  if (setRegister(MPU9250_ADDRESS, INT_PIN_CFG,INT_PULSE_50US) < 0){ // setup interrupt, 50 us pulse
     return -1;
   }  
-  if (setRegister(INT_ENABLE,INT_RAW_RDY_EN) < 0){ // set to data ready
+  if (setRegister(MPU9250_ADDRESS, INT_ENABLE,INT_RAW_RDY_EN) < 0){ // set to data ready
     return -2;
   }
   return 1;
@@ -347,7 +354,7 @@ int enableDataReadyInterrupt() {
 
 /* disables the data ready interrupt */
 int disableDataReadyInterrupt() {
-  if(setRegister(INT_ENABLE,INT_DISABLE) < 0){ // disable interrupt
+  if(setRegister(MPU9250_ADDRESS, INT_ENABLE,INT_DISABLE) < 0){ // disable interrupt
     return -1;
   }  
   return 1;
@@ -358,32 +365,32 @@ int enableWakeOnMotion(float womThresh_mg, int odr) {
   // set AK8963 to Power Down
   setRegistersAK8963(AK8963_CNTL1,AK8963_PWR_DOWN);
   // reset the MPU9250
-  setRegister(PWR_MGMNT_1,PWR_RESET);
+  setRegister(MPU9250_ADDRESS, PWR_MGMT_1,PWR_RESET);
   // wait for MPU-9250 to come back up
   usleep(1);
-  if(setRegister(PWR_MGMNT_1,0x00) < 0){ // cycle 0, sleep 0, standby 0
+  if(setRegister(MPU9250_ADDRESS, PWR_MGMT_1,0x00) < 0){ // cycle 0, sleep 0, standby 0
     return -1;
   } 
-  if(setRegister(PWR_MGMNT_2,DIS_GYRO) < 0){ // disable gyro measurements
+  if(setRegister(MPU9250_ADDRESS, PWR_MGMT_2,DIS_GYRO) < 0){ // disable gyro measurements
     return -2;
   } 
-  if(setRegister(ACCEL_CONFIG2,ACCEL_DLPF_184) < 0){ // setting accel bandwidth to 184Hz
+  if(setRegister(MPU9250_ADDRESS, ACCEL_CONFIG2,ACCEL_DLPF_184) < 0){ // setting accel bandwidth to 184Hz
     return -3;
   } 
-  if(setRegister(INT_ENABLE,INT_WOM_EN) < 0){ // enabling interrupt to wake on motion
+  if(setRegister(MPU9250_ADDRESS, INT_ENABLE,INT_WOM_EN) < 0){ // enabling interrupt to wake on motion
     return -4;
   } 
-  if(setRegister(MOT_DETECT_CTRL,(ACCEL_INTEL_EN | ACCEL_INTEL_MODE)) < 0){ // enabling accel hardware intelligence
+  if(setRegister(MPU9250_ADDRESS, MOT_DETECT_CTRL,(ACCEL_INTEL_EN | ACCEL_INTEL_MODE)) < 0){ // enabling accel hardware intelligence
     return -5;
   } 
 //   _womThreshold = map(womThresh_mg, 0, 1020, 0, 255);
 //   if(setRegister(WOM_THR,_womThreshold) < 0){ // setting wake on motion threshold
 //     return -6;
 //   }
-  if(setRegister(LP_ACCEL_ODR,(uint8_t)odr) < 0){ // set frequency of wakeup
+  if(setRegister(MPU9250_ADDRESS, LP_ACCEL_ODR,(uint8_t)odr) < 0){ // set frequency of wakeup
     return -7;
   }
-  if(setRegister(PWR_MGMNT_1,PWR_CYCLE) < 0){ // switch to accel low power mode
+  if(setRegister(MPU9250_ADDRESS, PWR_MGMT_1,PWR_CYCLE) < 0){ // switch to accel low power mode
     return -8;
   }
   return 1;
@@ -392,7 +399,7 @@ int enableWakeOnMotion(float womThresh_mg, int odr) {
 /* reads the most current data from MPU9250 and stores in buffer */
 int readSensor() {
   // grab the data from the MPU9250
-  if (getRegisters(ACCEL_OUT, 21, _buffer) < 0) {
+  if (getRegisters(MPU9250_ADDRESS, ACCEL_OUT, 21, _buffer) < 0) {
     return -1;
   }
   // combine into 16 bit values
@@ -474,12 +481,15 @@ float getTemperature_C() {
 int calibrateGyro() {
   // set the range, bandwidth, and srd
   if (setGyroRange(GYRO_RANGE_250DPS) < 0) {
+    printf("calibrateGyro Error. Code %d \n", -1);
     return -1;
   }
   if (setDlpfBandwidth(DLPF_BANDWIDTH_20HZ) < 0) {
+    printf("calibrateGyro Error. Code %d \n", -2);
     return -2;
   }
   if (setSrd(19) < 0) {
+    printf("calibrateGyro Error. Code %d \n", -3);
     return -3;
   }
 
@@ -806,109 +816,6 @@ void setMagCalZ(float bias,float scaleFactor) {
   _hzs = scaleFactor;
 }
 
-/* writes a register to the AK8963 given a register address and data */
-int setRegistersAK8963(uint8_t subAddress, uint8_t data)
-{
-  // set slave 0 to the AK8963 and set for write
-	if (setRegister(I2C_SLV0_ADDR,AK8963_I2C_ADDR) < 0) {
-    return -1;
-  }
-  // set the register to the desired AK8963 sub address 
-	if (setRegister(I2C_SLV0_REG,subAddress) < 0) {
-    return -2;
-  }
-  // store the data for write
-	if (setRegister(I2C_SLV0_DO,data) < 0) {
-    return -3;
-  }
-  // enable I2C and send 1 byte
-	if (setRegister(I2C_SLV0_CTRL,I2C_SLV0_EN | (uint8_t)1) < 0) {
-    return -4;
-  }
-	// read the register and confirm
-	if (getRegistersAK8963(subAddress,1,_buffer) < 0) {
-    return -5;
-  }
-	if(_buffer[0] == data) {
-  	return 1;
-  } else{
-  	return -6;
-  }
-}
-
-/* reads registers from the AK8963 */
-int getRegistersAK8963(uint8_t subAddress, uint8_t count, uint8_t* dest)
-{
-  // set slave 0 to the AK8963 and set for read
-	if (setRegister(I2C_SLV0_ADDR,AK8963_I2C_ADDR | I2C_READ_FLAG) < 0) {
-    return -1;
-  }
-  // set the register to the desired AK8963 sub address
-	if (setRegister(I2C_SLV0_REG,subAddress) < 0) {
-    return -2;
-  }
-  // enable I2C and request the bytes
-	if (setRegister(I2C_SLV0_CTRL,I2C_SLV0_EN | count) < 0) {
-    return -3;
-  }
-	usleep(1); // takes some time for these registers to fill
-  // read the bytes off the MPU9250 EXT_SENS_DATA registers
-	_status = getRegisters(EXT_SENS_DATA_00,count,dest); 
-  return _status;
-}
-
-/* gets the MPU9250 WHO_AM_I register value, expected to be 0x71 */
-int whoAmI(){
-  // read the WHO AM I register
-  if (getRegisters(WHO_AM_I,1,_buffer) < 0) {
-    return -1;
-  }
-  // return the register value
-  return _buffer[0];
-}
-
-/* gets the AK8963 WHO_AM_I register value, expected to be 0x48 */
-int whoAmIAK8963(){
-  // read the WHO AM I register
-  if (getRegistersAK8963(AK8963_WHO_AM_I,1,_buffer) < 0) {
-    return -1;
-  }
-  // return the register value
-  return _buffer[0];
-}
-
-// Select Device
-void detectIMU() 
-{
-	char filename[20];
-	unsigned char regAddr = 0x01;
-
-	sprintf(filename, "/dev/i2c-%d", 1);
-	file = open(filename, O_RDWR);
-
-	if (file < 0) {
-		printf("Unable to open I2C bus!");
-        exit(-1);
-	}
-	if (ioctl(file, I2C_SLAVE, MPU9250_ADDRESS) < 0) {
-		printf("Failed to select I2C device.");
-		exit(-1);
-	}
-	if (write(file, &regAddr, 1) != 1) {
-		printf("Failed to write device(%d)\n", MPU9250_ADDRESS);
-		exit(-1);
-	}
-	int response = i2c_smbus_read_byte_data(file, WHO_AM_I);
-	// check the WHO AM I byte, expected value is 0x71 (decimal 113) or 0x73 (decimal 115)
-	if (response == 113 || response == 115 ){
-		printf ("## MPU9250 DETECTED or similar ## \n Addr is %#02x (decimal %d)\n", response, response);
-	} else {
-		printf ("NO IMU DETECTED\n");
-		exit(-1);
-	}
-    close(file);
-}
-
 /**
  * write a byte into the register on a i2c device
  *
@@ -917,8 +824,8 @@ void detectIMU()
  * @return success or failure
  *
  */
-bool setRegister(unsigned char regAddr, unsigned char data) {
-	return setRegisters(regAddr, 1, &data);
+int setRegister(uint8_t devAddr, uint8_t regAddr, uint8_t data) {
+	return setRegisters(devAddr, regAddr, 1, &data);
 }
 
 /**
@@ -930,13 +837,11 @@ bool setRegister(unsigned char regAddr, unsigned char data) {
  * @return success or failure
  *
  */
-bool setRegisters(unsigned char regAddr, unsigned char length, unsigned char * data) {
+int setRegisters(uint8_t devAddr, uint8_t regAddr, uint8_t length, uint8_t * data) {
 
-	char count = 0;
-	unsigned char buf[128];
+	// char count = 0;
+  int result;
 	char filename[20];
-	
-	bool result = true;
 
 	if (length > 127) {
 		printf("length (%d) > 127\n", length);
@@ -951,23 +856,24 @@ bool setRegisters(unsigned char regAddr, unsigned char length, unsigned char * d
 		printf("Unable to open I2C bus!");
         exit(-1);
 	}
-	if (ioctl(file, I2C_SLAVE, MPU9250_ADDRESS) < 0) {
+	if (ioctl(file, I2C_SLAVE, devAddr) < 0) {
 		printf("Failed to select I2C device.");
 		exit(-1);
 	}
 
-	buf[0] = regAddr;
-	memcpy(buf + 1, data, length);
-	count = write(file, buf, length + 1);
-	if (count < 0) {
-		printf("Failed to write device(%d)\n", MPU9250_ADDRESS);
-		result = false;
+	_buffer[0] = regAddr;
+	memcpy(_buffer + 1, data, length);
+	result = write(file, _buffer, length + 1);
+	if (result < 0) {
+		printf("Failed to write device(%d)\n", devAddr);
+		// result = false;
 		goto Exit;
-	} else if (count != length + 1) {
-		printf("Short write to device, expected %d, got %d\n", length + 1, count);
-		result = false;
+	} else if (result != length + 1) {
+		printf("Short write to device, expected %d, got %d\n", length + 1, result);
+		// result = false;
 		goto Exit;
 	}
+
 
 	goto Exit;
 
@@ -984,8 +890,8 @@ bool setRegisters(unsigned char regAddr, unsigned char length, unsigned char * d
  * @return data length
  *
  */
-char getRegister(unsigned char regAddr, unsigned char *data) {
-	return getRegisters(regAddr, 1, data);
+char getRegister(uint8_t devAddr, uint8_t regAddr, uint8_t *data) {
+	return getRegisters(devAddr, regAddr, 1, data);
 }
 
 /**
@@ -997,10 +903,122 @@ char getRegister(unsigned char regAddr, unsigned char *data) {
  * @return data length
  *
  */
-char getRegisters(unsigned char regAddr, unsigned char length, unsigned char *data) {
+char getRegisters(uint8_t devAddr, uint8_t regAddr, uint8_t length, uint8_t *data) {
 
-	char count = 0;
+	// char count = 0;
+  int result;
 	char filename[20];
+
+	sprintf(filename, "/dev/i2c-%d", 1);
+	file = open(filename, O_RDWR);
+
+	if (file < 0) {
+		printf("Unable to open I2C bus!");
+        exit(-1);
+	}
+	if (ioctl(file, I2C_SLAVE, devAddr) < 0) {
+		printf("Failed to select I2C device.");
+		exit(-1);
+	}
+	if (write(file, &regAddr, 1) != 1) {
+		printf("Failed to write device. \n");
+		result = -1;
+		goto Exit;
+	}
+	result = read(file, data, length);
+	if (result < 0) {
+		printf("Failed to read device(%d): \n", result);
+		result = -1;
+		goto Exit;
+	} else if (result != length) {
+		printf("Short read  from device, expected %d, got %d\n", length, result);
+		result = -1;
+		goto Exit;
+	} 
+
+	goto Exit;
+
+	Exit:
+	close(file);
+	return 1;
+}
+
+/* writes a register to the AK8963 given a register address and data */
+int setRegistersAK8963(uint8_t subAddress, uint8_t data)
+{
+  // set slave 0 to the AK8963 and set for write
+	if (setRegister(MPU9250_ADDRESS, I2C_SLV0_ADDR,AK8963_I2C_ADDR) < 0) {
+    return -1;
+  }
+  // set the register to the desired AK8963 sub address 
+	if (setRegister(MPU9250_ADDRESS, I2C_SLV0_REG, subAddress) < 0) {
+    return -2;
+  }
+  // store the data for write
+	if (setRegister(MPU9250_ADDRESS, I2C_SLV0_DO, data) < 0) {
+    return -3;
+  }
+  // enable I2C and send 1 byte
+	if (setRegister(MPU9250_ADDRESS, I2C_SLV0_CTRL, I2C_SLV0_EN | (uint8_t)0x01) < 0) {
+    return -4;
+  }
+	// read the register and confirm
+	if (getRegistersAK8963(subAddress, 1, _buffer) < 0) {
+    return -5;
+  }
+	if(_buffer[0] == data) {
+  	return 1;
+  } else{
+  	return -6;
+  }
+}
+
+/* reads registers from the AK8963 */
+int getRegistersAK8963(uint8_t subAddress, uint8_t count, uint8_t * dest)
+{
+  // set slave 0 to the AK8963 and set for read
+	if (setRegister(MPU9250_ADDRESS, I2C_SLV0_ADDR, AK8963_I2C_ADDR | I2C_READ_FLAG) < 0) {
+    return -1;
+  }
+  // set the register to the desired AK8963 sub address
+	if (setRegister(MPU9250_ADDRESS, I2C_SLV0_REG, subAddress) < 0) {
+    return -2;
+  }
+  // enable I2C and request the bytes
+	if (setRegister(MPU9250_ADDRESS, I2C_SLV0_CTRL, I2C_SLV0_EN | count) < 0) {
+    return -3;
+  }
+	usleep(1); // takes some time for these registers to fill
+  // read the bytes off the MPU9250 EXT_SENS_DATA registers
+	_status = getRegisters(MPU9250_ADDRESS, EXT_SENS_DATA_00,count,dest); 
+  return _status;
+}
+
+/* gets the MPU9250 WHO_AM_I register value, expected to be 0x71 */
+int whoAmI(uint8_t devAddr, uint8_t regAddr){
+  // read the WHO AM I register
+  if (getRegister(devAddr, regAddr, _buffer) < 0) {
+    return -1;
+  }
+  // return the register value
+  return _buffer[0];
+}
+
+/* gets the AK8963 WHO_AM_I register value, expected to be 0x48 */
+int whoAmIAK8963(){
+  // read the WHO AM I register
+  if (getRegistersAK8963(AK8963_WHO_AM_I,1,_buffer) < 0) {
+    return -1;
+  }
+  // return the register value
+  return _buffer[0];
+}
+
+// detect Device
+int detectIMU() 
+{
+	char filename[20];
+	uint8_t regAddr = 0x01;
 
 	sprintf(filename, "/dev/i2c-%d", 1);
 	file = open(filename, O_RDWR);
@@ -1014,24 +1032,17 @@ char getRegisters(unsigned char regAddr, unsigned char length, unsigned char *da
 		exit(-1);
 	}
 	if (write(file, &regAddr, 1) != 1) {
-		printf("Failed to write reg: \n");
-		count = -1;
-		goto Exit;
+		printf("Failed to write device(%d)\n", WHO_AM_I);
+		exit(-1);
 	}
-	count = read(file, data, length);
-	if (count < 0) {
-		printf("Failed to read device(%d): \n", count);
-		count = -1;
-		goto Exit;
-	} else if (count != length) {
-		printf("Short read  from device, expected %d, got %d\n", length, count);
-		count = -1;
-		goto Exit;
+	int response = i2c_smbus_read_byte_data(file, WHO_AM_I);
+	// check the WHO AM I byte, expected value is 0x71 (decimal 113) or 0x73 (decimal 115)
+	if (response == 113 || response == 115 ){
+		printf ("## MPU9250 DETECTED or similar ## \n Addr is %#02x (decimal %d)\n", response, response);
+	} else {
+		printf ("NO IMU DETECTED\n");
+		exit(-1);
 	}
-
-	goto Exit;
-
-	Exit:
-	close(file);
-	return count;
+    close(file);
+    return 1;
 }

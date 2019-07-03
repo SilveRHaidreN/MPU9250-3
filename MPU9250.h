@@ -71,11 +71,11 @@
 #define INT_PULSE_50US      0x00
 #define INT_WOM_EN          0x40
 #define INT_RAW_RDY_EN      0x01
-#define PWR_MGMNT_1         0x6B
+#define PWR_MGMT_1          0x6B
 #define PWR_CYCLE           0x20
 #define PWR_RESET           0x80
 #define CLOCK_SEL_PLL       0x01
-#define PWR_MGMNT_2         0x6C
+#define PWR_MGMT_2          0x6C
 #define SEN_ENABLE          0x00
 #define DIS_GYRO            0x07
 #define USER_CTRL           0x6A
@@ -229,16 +229,19 @@ const int16_t tZ[3] = {0,  0, -1};
 const float G = 9.807f;
 const float _d2r = 3.14159265359f/180.0f;
 // Main functions
-bool setRegister(unsigned char regAddr, unsigned char data);
-bool setRegisters(unsigned char regAddr, unsigned char length, unsigned char * data);
-char getRegisters(unsigned char regAddr, unsigned char length, unsigned char *data);
-char getRegister(unsigned char regAddr, unsigned char *data);
+int setRegister(uint8_t devAddr, uint8_t regAddr, uint8_t data);
+int setRegisters(uint8_t devAddr, uint8_t regAddr, uint8_t length, uint8_t * data);
+char getRegisters(uint8_t devAddr, uint8_t regAddr, uint8_t length, uint8_t *data);
+char getRegister(uint8_t devAddr, uint8_t regAddr, uint8_t * data);
 int setRegistersAK8963(uint8_t subAddress, uint8_t data);
-int getRegistersAK8963(uint8_t subAddress, uint8_t count, uint8_t* dest);
-void detectIMU();
+int getRegistersAK8963(uint8_t subAddress, uint8_t count, uint8_t * dest);
+int detectIMU();
 int setSrd(uint8_t srd);
+int whoAmI(uint8_t devAddr, uint8_t regAddr);
 int whoAmIAK8963();
 int calibrateGyro();
+int calibrateMag();
+int calibrateAccel();
 // int setGyroRange(GyroRange range);
 // int setDlpfBandwidth(DlpfBandwidth bandwidth);
 #endif
